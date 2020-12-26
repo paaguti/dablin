@@ -2,7 +2,7 @@
 # Project setup
 ########################################################################
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.4)
 project(dablin C CXX)
 
 # Select the release build type by default to get optimization flags
@@ -14,42 +14,75 @@ set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE STRING "")
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 
+include(CheckCXXSourceCompiles)
+
+enable_testing()
+
+
+########################################################################
+# Build the FEC library before setting up DABlin application builds.
+########################################################################
+
+add_subdirectory(fec)
+
 
 ########################################################################
 # Version information
 ########################################################################
 
-set(VERSION_INFO_MAJOR  0)
-set(VERSION_INFO_MINOR  0)
-set(VERSION_INFO_PATCH  0)
+# version derived from git (if possible)
+execute_process(
+	COMMAND git describe --dirty
+	OUTPUT_VARIABLE VERSION_FROM_GIT
+	ERROR_QUIET
+	OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
-if(NOT DEFINED VERSION_INFO_EXTRA)
-    set(VERSION_INFO_EXTRA "git")
+if(VERSION_FROM_GIT)
+	add_definitions(-DDABLIN_VERSION="${VERSION_FROM_GIT}")
+	set(VERSION_OUTPUT ${VERSION_FROM_GIT})
+else()
+	set(VERSION_OUTPUT "[see src/version.h]")
 endif()
-include(Version)
-
-if(NOT DEFINED VERSION)
-    #set(VERSION "\"${VERSION_INFO_MAJOR}.${VERSION_INFO_MINOR}.${VERSION_INFO_PATCH}\"")
-    set(VERSION "\"${VERSION_INFO}\"")
-endif()
-
 
 ########################################################################
 # Compiler specific setup
 ########################################################################
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_COMPILER_IS_CLANGXX 1)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANGXX)
-    add_definitions(-std=gnu++11)
-    add_definitions(-Wall)
+    # C++11
+    add_compile_options(-std=c++0x)
+    
+    # warnings
+    add_compile_options(-Wall)
+    add_compile_options(-Wextra)
 elseif(MSVC)
     # TODO
 endif()
+if(CMAKE_COMPILER_IS_GNUCXX)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        # strip symbols (TODO: add also for clang)
+        SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -s")
+    endif()
+    
+    # hardening (TODO: add also for clang/Cygwin)
+    add_compile_options(-fstack-protector-strong)
+    add_compile_options(-fPIE)
+    SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -pie")
+    if(NOT CYGWIN)
+        SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -z now")
+    endif()
+endif()
+
+# support 2GB+ files on 32bit systems
+add_definitions(-D_FILE_OFFSET_BITS=64)
+
+# enable newer POSIX API
+add_definitions(-D_POSIX_C_SOURCE=200809L)
 
 
 ########################################################################
@@ -57,130 +90,87 @@ endif()
 ########################################################################
 
 find_package(PkgConfig)
-# Threads
 find_package(Threads REQUIRED)
 
 # SDL2
 if(NOT DISABLE_SDL)
     pkg_check_modules(SDL2 sdl2 REQUIRED)
-    if(NOT SDL2_FOUND)
-        message(FATAL_ERROR "SDL2 required to compile dablin\n")
-    else()
-        include_directories(${SDL2_INCLUDE_DIRS})
-        list(APPEND dablin_sources sdl_output.cpp)
-    endif()
+	include_directories(${SDL2_INCLUDE_DIRS})
+	link_directories(${SDL2_LIBRARY_DIRS})
+	list(APPEND dablin_sources sdl_output.cpp)
 else()
     add_definitions(-DDABLIN_DISABLE_SDL)
 endif()
 
 # libmpg123
 pkg_check_modules(MPG123 libmpg123 REQUIRED)
-if(NOT MPG123_FOUND)
-    message(FATAL_ERROR "libmpg123 required to compile dablin\n")
-else()
-    include_directories(${MPG123_INCLUDE_DIRS})
-endif()
-
-# libfec
-find_package(FEC)
-if(NOT FEC_FOUND)
-    message(FATAL_ERROR "libfec required to compile dablin\n")
-else()
-    include_directories(${FEC_INCLUDE_DIRS})
-endif()
-
+include_directories(${MPG123_INCLUDE_DIRS})
+link_directories(${MPG123_LIBRARY_DIRS})
 
 # gtkmm 3.0
 pkg_check_modules(GTKMM gtkmm-3.0)
 if(GTKMM_FOUND)
     include_directories(${GTKMM_INCLUDE_DIRS})
+    link_directories(${GTKMM_LIBRARY_DIRS})
 endif()
 
-# libfaad2
-find_package(FAAD)
-
-
-# fdk-aac
-pkg_check_modules(FDKAAC fdk-aac)
-
-# fdk-aac-dabplus
-pkg_check_modules(FDKAAC-DABPLUS fdk-aac-dabplus)
-
 if(USE_FDK-AAC)
+    # fdk-aac / fdk-aac-dabplus
+    pkg_check_modules(FDKAAC fdk-aac)
+    pkg_check_modules(FDKAAC-DABPLUS fdk-aac-dabplus)
     if(NOT(FDKAAC_FOUND OR FDKAAC-DABPLUS_FOUND))
         message(FATAL_ERROR "fdk-aac or fdk-aac-dabplus required to compile dablin with USE_FDK-AAC\n")
     endif()
     if(FDKAAC-DABPLUS_FOUND)
         include_directories(${FDKAAC-DABPLUS_INCLUDE_DIRS})
+        link_directories(${FDKAAC-DABPLUS_LIBRARY_DIRS})
         list(APPEND AAC_LIB ${FDKAAC-DABPLUS_LIBRARIES})
     else()
         include_directories(${FDKAAC_INCLUDE_DIRS})
+        link_directories(${FDKAAC_LIBRARY_DIRS})
         list(APPEND AAC_LIB ${FDKAAC_LIBRARIES})
     endif()
     add_definitions(-DDABLIN_AAC_FDKAAC)
 else()
-    if(NOT FAAD_FOUND)
-        message(FATAL_ERROR "libfaad required to compile dablin\n")
-    endif()
+    # libfaad2
+    find_package(FAAD REQUIRED)
     include_directories(${FAAD_INCLUDE_DIRS})
+    link_directories(${FAAD_LIBRARY_DIRS})
     list(APPEND AAC_LIB ${FAAD_LIBRARIES})
     add_definitions(-DDABLIN_AAC_FAAD2)
 endif()
 
+# iconv
+find_package(ICONV REQUIRED)
+include_directories(${ICONV_INCLUDE_DIRS})
+link_directories(${ICONV_LIBRARY_DIRS})
 
-########################################################################
-# Setup apps
-########################################################################
-
-list(APPEND dablin_sources
-    dabplus_decoder.cpp
-    eti_source.cpp
-    eti_player.cpp
-    dab_decoder.cpp
-    fic_decoder.cpp
-    pcm_output.cpp
-    tools.cpp
+# atomic
+list(APPEND CMAKE_REQUIRED_FLAGS -std=c++0x)
+check_cxx_source_compiles("
+    #include <atomic>
+    std::atomic<double> x(1.0);
+    int main() {return x;}"
+    NATIVE_ATOMICS_SUPPORT
     )
-
-list(APPEND dablin_cli_sources
-    dablin.cpp
-    )
-
-list(APPEND dablin_gtk_sources
-    pad_decoder.cpp
-    dablin_gtk.cpp
-    )
-
-list(APPEND common_link_list
-    ${CMAKE_THREAD_LIBS_INIT} ${MPG123_LIBRARIES} ${SDL2_LIBRARIES} ${AAC_LIB} ${FEC_LIBRARIES}
-    )
-
-set_source_files_properties(
-    ${dablin_sources}
-    ${dablin_cli_sources}
-    ${dablin_gtk_sources}
-    PROPERTIES LANGUAGE "CXX"
-    )
-
-# dablin
-add_executable(dablin ${dablin_sources} ${dablin_cli_sources})
-target_link_libraries(dablin ${common_link_list})
-install(TARGETS dablin DESTINATION bin)
-
-# dablin_gtk
-if(GTKMM_FOUND)
-    add_executable(dablin_gtk ${dablin_sources} ${dablin_gtk_sources})
-    target_link_libraries(dablin_gtk ${common_link_list} ${GTKMM_LIBRARIES})
-    install(TARGETS dablin_gtk DESTINATION bin)
+if(NOT NATIVE_ATOMICS_SUPPORT)
+    find_package(ATOMIC REQUIRED)
+    link_directories(${ATOMIC_LIBRARY_DIRS})
 endif()
 
+########################################################################
+# Setup DABlin application build
+########################################################################
+
+add_subdirectory(src)
+add_subdirectory(doc)
 
 ########################################################################
 # Print Summary
 ########################################################################
 message(STATUS "")
 message(STATUS "##########################################################")
-message(STATUS "## Building version: ${VERSION}")
+message(STATUS "## Building version: ${VERSION_OUTPUT}")
 message(STATUS "## Using install prefix: ${CMAKE_INSTALL_PREFIX}")
 if(NOT GTKMM_FOUND)
     message(STATUS "## gtkmm not found, thus do not build dablin_gtk")

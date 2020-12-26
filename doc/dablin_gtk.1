@@ -1,0 +1,83 @@
+.TH DABLIN_GTK 1 "2020-01-18"
+.\"------------------------------------------------------------------------
+.SH NAME
+dablin_gtk \- GTK DAB/DAB+ receiver for Linux
+.\"------------------------------------------------------------------------
+.SH SYNOPSIS
+.B dablin_gtk
+.RI ( options )
+.RI [ file ]
+.\"------------------------------------------------------------------------
+.SH DESCRIPTION
+.B DABlin
+plays a DAB/DAB+ audio service – from a live transmission or from
+a stored ensemble recording (ETI-NI, or EDI AF with ETI). Both DAB (MP2)
+and DAB+ (AAC-LC, HE-AAC, HE-AAC v2) services are supported.
+.PP
+The GTK GUI version in addition supports the data applications Dynamic
+Label and MOT Slideshow (if used by the selected service).
+.\"------------------------------------------------------------------------
+.SH OPTIONS
+.TP
+.B \-h
+Show summary of options
+.TP
+.B \-f <format>
+Source format: "eti" (default), "edi"
+.TP
+.B \-d <binary>
+Use DAB live source (using the mentioned binary)
+.TP
+.B \-D <type>
+DAB live source type: "dab2eti" (default), "eti-cmdline"
+.TP
+.B \-C <ch>,...
+Channels to be listed (comma separated; requires DAB live source; an optional gain can also be specified, e.g. "5C:-54")
+.TP
+.B \-c <ch>
+Channel to be played (requires DAB live source)
+.TP
+.B \-l <label>
+Label of the service to be played
+.TP
+.B \-1
+Play the first service found
+.TP
+.B \-s <sid>
+ID of the service to be played
+.TP
+.B \-x <scids>
+ID of the service component to be played (requires service ID)
+.TP
+.B \-g <gain>
+USB stick gain to pass to DAB live source (auto gain is default)
+.TP
+.B \-r <path>
+Path for recordings (default: /tmp)
+.TP
+.B \-P <size>
+Recording prebuffer size in seconds (default: 0)
+.TP
+.B \-p
+Output PCM to stdout instead of using SDL
+.TP
+.B \-u
+Output untouched audio stream to stdout instead of using SDL
+.TP
+.B \-I
+Don't catch up on stream after interruption
+.TP
+.B \-S
+Initially disable slideshow
+.TP
+.B \-L
+Enable loose behaviour (e.g. PAD conformance)
+.TP
+.B \-F
+Disable dynamic FIC messages (dynamic PTY, announcements)
+.TP
+.B file
+Input file to be played (stdin, if not specified)
+.\"------------------------------------------------------------------------
+.SH "SEE ALSO"
+.BR dablin (1)
